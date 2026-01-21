@@ -1,5 +1,9 @@
-from __future__ import print_function
-from __future__ import division
+from __future__ import (
+    print_function,
+)  # Ensures compatibility of the print function between Python 2 and 3
+from __future__ import (
+    division,
+)  # Ensures division operator behaves like Python 3 (true division) even in Python 2
 import cv2 as cv
 import argparse
 
@@ -19,12 +23,12 @@ parser = argparse.ArgumentParser(
     description="Code for Adding a Trackbar to our applications tutorial."
 )
 parser.add_argument(
-    "--input1", help="Path to the first input image.",
-    default="../asset/LinuxLogo.jpg"
+    "--input1", help="Path to the first input image.", default="../asset/LinuxLogo.jpg"
 )
 parser.add_argument(
-    "--input2", help="Path to the second input image.",
-    default="../asset/WindowsLogo.jpg"
+    "--input2",
+    help="Path to the second input image.",
+    default="../asset/WindowsLogo.jpg",
 )
 args = parser.parse_args()
 
@@ -46,8 +50,7 @@ cv.namedWindow(title_window)
 
 # Now we can create the Trackbar:
 trackbar_name = "Alpha x %d" % alpha_slider_max
-cv.createTrackbar(trackbar_name, title_window, 0,
-                  alpha_slider_max, on_trackbar)
+cv.createTrackbar(trackbar_name, title_window, 0, alpha_slider_max, on_trackbar)
 
 # Show some stuff
 # with the callback function
