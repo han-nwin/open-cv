@@ -29,19 +29,36 @@ CUBE_VERTICES = np.array(
 
 # 12 edges: back face, front face, connecting
 CUBE_EDGES = [
-    (0, 1), (1, 2), (2, 3), (3, 0),  # back face
-    (4, 5), (5, 6), (6, 7), (7, 4),  # front face
-    (0, 4), (1, 5), (2, 6), (3, 7),  # connecting
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 0),  # back face
+    (4, 5),
+    (5, 6),
+    (6, 7),
+    (7, 4),  # front face
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7),  # connecting
 ]
 
 
 def rotation_matrix_x(angle):
     c, s = math.cos(angle), math.sin(angle)
+    # Rotation matrix around the X-axis:
+    # [ 1     0       0   ]
+    # [ 0   cosθ   -sinθ ]
+    # [ 0   sinθ    cosθ ]
     return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
 
 
 def rotation_matrix_y(angle):
     c, s = math.cos(angle), math.sin(angle)
+    # Rotation matrix around the Y-axis:
+    # [  cosθ   0   sinθ ]
+    # [   0     1    0   ]
+    # [ -sinθ   0   cosθ ]
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
 
 

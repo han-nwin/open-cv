@@ -36,6 +36,8 @@ HAND_CONNECTIONS = [
     (13, 17),
 ]
 
+PINCH_THRESHOLD = 0.1
+
 
 def get_model_path():
     cache_dir = Path(tempfile.gettempdir()) / "mediapipe_models"
@@ -83,9 +85,6 @@ class HandDetector:
 
     def close(self):
         self._recognizer.close()
-
-
-PINCH_THRESHOLD = 0.1
 
 
 def pinch_distance(landmarks):
