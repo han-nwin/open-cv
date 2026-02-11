@@ -45,6 +45,34 @@ SKY_BOT = np.array([50, 25, 45], dtype=np.float64)
 GROUND_TOP = np.array([35, 18, 30], dtype=np.float64)
 GROUND_BOT = np.array([25, 12, 22], dtype=np.float64)
 
+# Draw strength thresholds (hand_apparent_size values)
+REST_SIZE = 0.15  # Hand extended (arm straight)
+DRAW_SIZE = 0.40  # Hand close to face (fully drawn)
+
+
+class Stabilizer:
+    """Exponential smoothing to reduce mediapipe jitter."""
+
+    def __init__(self, alpha=0.5):
+        self.alpha = alpha
+        self.prev_val = None
+
+    def update(self, val):
+        if self.prev_val is None:
+            self.prev_val = val
+        self.prev_val = self.prev_val * (1 - self.alpha) + val * self.alpha
+        return self.prev_val
+
+    def reset(self):
+        self.prev_val = None
+
+
+def get_draw_strength(landmarks):
+    """Returns 0.0 (relaxed) to 1.0 (fully drawn) based on hand size."""
+    size = hand_apparent_size(landmarks)
+    strength = (size - REST_SIZE) / (DRAW_SIZE - REST_SIZE)
+    return max(0.0, min(1.0, strength))
+
 
 # ---------------------------------------------------------------------------
 # 3D helpers
@@ -411,41 +439,49 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
     forward = _normalize2(aim_pt[0] - grip[0], aim_pt[1] - grip[1])
     perp = _choose_perp_sign(forward, grip)
 
-    # Bow local frame: +x bulges toward center (perp), y aligns with aim (forward).
-    half_h = 230
+    # Top-down FPS bow: limbs span along perp (left-right),
+    # curve bulges along forward (toward target). Rotates with aim.
+    half_w = 200
     steps = 46
     limb_pts = []
     for i in range(steps):
         t = (i / (steps - 1)) * 2.0 - 1.0
         at = abs(t)
-        local_y = t * half_h
+        local_y = t * half_w  # limb span along perp (left-right)
         local_x = 84 * (1.0 - t * t) + 26 * max(0.0, (at - 0.72) / 0.28) ** 1.6
-        limb_pts.append(_fps_local_to_world(grip, perp, forward, local_x, local_y))
+        limb_pts.append(_fps_local_to_world(grip, forward, perp, local_x, local_y))
 
-    top_tip = limb_pts[-1]
-    bot_tip = limb_pts[0]
+    left_tip = limb_pts[0]
+    right_tip = limb_pts[-1]
     gp = limb_pts[steps // 2]
 
-    # Nock line near camera.
-    nock_fwd = 36.0
+    # Everything anchored to gp (bow rest) along the forward/aim axis.
+    rest_x, rest_y = float(gp[0]), float(gp[1])
     pull = (power * 140.0) if nocked else 0.0
     vib = (math.sin(elapsed * 42.0) * (0.8 + 1.6 * power)) if nocked else 0.0
-    nock_x = grip[0] + forward[0] * (nock_fwd - pull) + 0.65 * pull + perp[0] * vib
-    nock_y = grip[1] + forward[1] * (nock_fwd - pull) + 0.65 * pull + perp[1] * vib
+
+    # Nock sits behind the rest along -forward; pull stretches it further back.
+    base_nock_dist = 40.0
+    nock_x = rest_x - forward[0] * (base_nock_dist + pull) + forward[0] * vib
+    nock_y = rest_y - forward[1] * (base_nock_dist + pull) + forward[1] * vib
     nock_ix, nock_iy = int(nock_x), int(nock_y)
 
-    # String behind arrow.
+    # Arrow tip extends past the bow along +forward so the heart stays visible.
+    tip_x = rest_x + forward[0] * 28
+    tip_y = rest_y + forward[1] * 28
+
+    # String from limb tips through nock (curved via control points).
     c1 = (
-        int((top_tip[0] + nock_ix) * 0.5 + perp[0] * vib),
-        int((top_tip[1] + nock_iy) * 0.5 + perp[1] * vib),
+        int((left_tip[0] + nock_ix) * 0.5 + forward[0] * vib),
+        int((left_tip[1] + nock_iy) * 0.5 + forward[1] * vib),
     )
     c2 = (
-        int((bot_tip[0] + nock_ix) * 0.5 - perp[0] * vib),
-        int((bot_tip[1] + nock_iy) * 0.5 - perp[1] * vib),
+        int((right_tip[0] + nock_ix) * 0.5 - forward[0] * vib),
+        int((right_tip[1] + nock_iy) * 0.5 - forward[1] * vib),
     )
     cv2.polylines(
         canvas,
-        [np.array([top_tip, c1, (nock_ix, nock_iy)], dtype=np.int32)],
+        [np.array([left_tip, c1, (nock_ix, nock_iy)], dtype=np.int32)],
         False,
         STRING_COLOR,
         2,
@@ -453,18 +489,16 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
     )
     cv2.polylines(
         canvas,
-        [np.array([(nock_ix, nock_iy), c2, bot_tip], dtype=np.int32)],
+        [np.array([(nock_ix, nock_iy), c2, right_tip], dtype=np.int32)],
         False,
         STRING_COLOR,
         2,
         cv2.LINE_AA,
     )
 
-    # Arrow anchored at nock as a rigid shaft so tip also moves back on pull.
-    arrow_len = min(260.0, 230.0)
-    tip_x = nock_x + forward[0] * arrow_len
-    tip_y = nock_y + forward[1] * arrow_len
-    _draw_tapered_arrow(canvas, (nock_x, nock_y), (tip_x, tip_y), perp, 12 + int(4 * power), 2)
+    # Arrow aligned with forward (parallel to line of sight).
+    near_w = 12 + int(4 * power)
+    _draw_tapered_arrow(canvas, (nock_x, nock_y), (tip_x, tip_y), perp, near_w, 2)
     draw_small_heart(canvas, int(tip_x), int(tip_y), 5, HEART_RED)
 
     # Bow limbs above string/arrow.
@@ -474,28 +508,38 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
         c = tuple(int(v * (1.0 - 0.24 * frac)) for v in BOW_COLOR)
         cv2.line(canvas, limb_pts[i], limb_pts[i + 1], c, th, cv2.LINE_AA)
 
-    bow_ang = math.degrees(math.atan2(forward[1], forward[0]))
-    cv2.ellipse(canvas, gp, (14, 28), bow_ang, 0, 360, (76, 56, 118), -1, cv2.LINE_AA)
-    cv2.ellipse(canvas, gp, (14, 28), bow_ang, 0, 360, (124, 98, 172), 2, cv2.LINE_AA)
+    # Grip ellipse oriented along perp (limb axis in top-down view).
+    limb_ang = math.degrees(math.atan2(perp[1], perp[0]))
+    cv2.ellipse(canvas, gp, (14, 28), limb_ang, 0, 360, (76, 56, 118), -1, cv2.LINE_AA)
+    cv2.ellipse(canvas, gp, (14, 28), limb_ang, 0, 360, (124, 98, 172), 2, cv2.LINE_AA)
 
-    # Hand/fingers + nock glow on top.
+    # Hand/fingers behind grip (toward archer, -forward direction).
     hand_overlay = canvas.copy()
     palm = (
-        int(gp[0] + perp[0] * 24 + forward[0] * 10),
-        int(gp[1] + perp[1] * 24 + forward[1] * 10),
+        int(gp[0] - forward[0] * 22 + perp[0] * 5),
+        int(gp[1] - forward[1] * 22 + perp[1] * 5),
     )
-    cv2.ellipse(hand_overlay, palm, (21, 15), bow_ang, 0, 360, (150, 122, 182), -1, cv2.LINE_AA)
+    cv2.ellipse(
+        hand_overlay, palm, (21, 15), limb_ang, 0, 360, (150, 122, 182), -1, cv2.LINE_AA
+    )
     for j in range(4):
         off = -13 + j * 9
-        fx = int(gp[0] + perp[0] * (26 + (j % 2)) + forward[0] * off)
-        fy = int(gp[1] + perp[1] * (26 + (j % 2)) + forward[1] * off)
+        fx = int(gp[0] - forward[0] * 24 + perp[0] * off)
+        fy = int(gp[1] - forward[1] * 24 + perp[1] * off)
         cv2.circle(hand_overlay, (fx, fy), 5, (170, 141, 196), -1, cv2.LINE_AA)
     cv2.addWeighted(hand_overlay, 0.58, canvas, 0.42, 0, canvas)
 
     cv2.circle(canvas, (nock_ix, nock_iy), 4, (236, 228, 248), -1, cv2.LINE_AA)
     if power > 0.55 and nocked:
         glow = np.zeros_like(canvas)
-        cv2.circle(glow, (nock_ix, nock_iy), int(14 + power * 30), (95, 72, 225), -1, cv2.LINE_AA)
+        cv2.circle(
+            glow,
+            (nock_ix, nock_iy),
+            int(14 + power * 30),
+            (95, 72, 225),
+            -1,
+            cv2.LINE_AA,
+        )
         glow = cv2.GaussianBlur(glow, (0, 0), 5 + power * 4)
         cv2.addWeighted(glow, 0.14 + 0.20 * power, canvas, 1.0, 0, canvas)
 
@@ -513,6 +557,35 @@ def draw_crosshair(canvas, sx, sy):
     cv2.line(canvas, (sx, sy - size), (sx, sy - gap), color, 1, cv2.LINE_AA)
     cv2.line(canvas, (sx, sy + gap), (sx, sy + size), color, 1, cv2.LINE_AA)
     cv2.circle(canvas, (sx, sy), 2, color, -1, cv2.LINE_AA)
+
+
+def draw_bow_hud(frame, landmarks, w, h, strength):
+    """Draw bow string overlay on the webcam PiP instead of hand skeleton."""
+    cx, cy = hand_centroid(landmarks)
+    aim_px, aim_py = int(cx * w), int(cy * h)
+
+    # Bow handle anchored to bottom-left corner
+    bow_anchor = (0, h)
+
+    # Dynamic color: green (relaxed) -> red (tension)
+    color = (0, int(255 * (1 - strength)), int(255 * strength))
+
+    if is_pinching(landmarks):
+        # String from anchor to hand
+        cv2.line(frame, bow_anchor, (aim_px, aim_py), color, 3, cv2.LINE_AA)
+
+        # Nock point circle grows with tension
+        radius = int(5 + strength * 10)
+        cv2.circle(frame, (aim_px, aim_py), radius, color, 2, cv2.LINE_AA)
+
+        # Crosshair when fully drawn
+        if strength > 0.9:
+            mx, my = w // 2, h // 2
+            cv2.line(frame, (mx - 10, my), (mx + 10, my), (0, 255, 255), 2)
+            cv2.line(frame, (mx, my - 10), (mx, my + 10), (0, 255, 255), 2)
+    else:
+        # Hand open — show aim cursor only
+        cv2.circle(frame, (aim_px, aim_py), 5, (200, 200, 200), -1)
 
 
 def draw_power_meter(canvas, power):
@@ -657,6 +730,9 @@ def main():
     _aim_at_start = (0.5, 0.5)
     bow_anchor_uv = (0.70, 0.62)
     bow_anchor_px = (int(bow_anchor_uv[0] * CANVAS_W), int(bow_anchor_uv[1] * CANVAS_H))
+    stab_aim_x = Stabilizer(alpha=0.5)
+    stab_aim_y = Stabilizer(alpha=0.5)
+    stab_power = Stabilizer(alpha=0.4)
 
     # Targets spread at different depths
     placements = [
@@ -708,19 +784,29 @@ def main():
                     int(bow_anchor_uv[0] * CANVAS_W),
                     int(bow_anchor_uv[1] * CANVAS_H),
                 )
+                stab_aim_x.reset()
+                stab_aim_y.reset()
+                stab_power.reset()
 
             if pinch_now and nocked:
                 # Power from depth: hand moving away → smaller apparent size
                 cur_size = hand_apparent_size(landmarks)
                 delta = _init_hand_size - cur_size
-                power = max(0.0, min(1.0, delta * PULL_SENSITIVITY))
+                raw_power = max(0.0, min(1.0, delta * PULL_SENSITIVITY))
+                power = stab_power.update(raw_power)
 
                 # Aim from centroid movement (like rotation in CubeController)
                 cx, cy = hand_centroid(landmarks)
                 dx = cx - _init_centroid[0]
                 dy = cy - _init_centroid[1]
-                aim_x = max(0.05, min(0.95, _aim_at_start[0] + dx * AIM_SENSITIVITY))
-                aim_y = max(0.05, min(0.95, _aim_at_start[1] + dy * AIM_SENSITIVITY))
+                raw_aim_x = max(
+                    0.05, min(0.95, _aim_at_start[0] + dx * AIM_SENSITIVITY)
+                )
+                raw_aim_y = max(
+                    0.05, min(0.95, _aim_at_start[1] + dy * AIM_SENSITIVITY)
+                )
+                aim_x = stab_aim_x.update(raw_aim_x)
+                aim_y = stab_aim_y.update(raw_aim_y)
                 bow_anchor_uv = (cx, cy)
                 bow_anchor_px = (int(cx * CANVAS_W), int(cy * CANVAS_H))
 
