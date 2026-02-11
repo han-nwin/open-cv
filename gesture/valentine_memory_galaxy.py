@@ -61,19 +61,27 @@ def make_gradient_placeholder(width, height, text, idx):
     y = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
     x = np.linspace(0.0, 1.0, width, dtype=np.float32)[None, :]
 
-    c1 = np.array([
-        30 + (idx * 23) % 90,
-        35 + (idx * 31) % 110,
-        90 + (idx * 43) % 120,
-    ], dtype=np.float32)
-    c2 = np.array([
-        110 + (idx * 17) % 120,
-        50 + (idx * 19) % 100,
-        160 + (idx * 29) % 90,
-    ], dtype=np.float32)
+    c1 = np.array(
+        [
+            30 + (idx * 23) % 90,
+            35 + (idx * 31) % 110,
+            90 + (idx * 43) % 120,
+        ],
+        dtype=np.float32,
+    )
+    c2 = np.array(
+        [
+            110 + (idx * 17) % 120,
+            50 + (idx * 19) % 100,
+            160 + (idx * 29) % 90,
+        ],
+        dtype=np.float32,
+    )
 
-    mix = (0.62 * x + 0.38 * y)
-    img = c1[None, None, :] * (1.0 - mix[..., None]) + c2[None, None, :] * mix[..., None]
+    mix = 0.62 * x + 0.38 * y
+    img = (
+        c1[None, None, :] * (1.0 - mix[..., None]) + c2[None, None, :] * mix[..., None]
+    )
 
     circles = np.zeros_like(img)
     for k in range(6):
@@ -200,7 +208,7 @@ def get_vignette(height, width):
     x = np.linspace(-1.0, 1.0, width, dtype=np.float32)[None, :]
     r = np.sqrt(x * x + y * y)
     v = 1.0 - np.clip((r - 0.05) / 1.25, 0.0, 1.0)
-    return (v ** 1.6)
+    return v**1.6
 
 
 def create_card_assets(images):
@@ -228,12 +236,29 @@ def create_card_assets(images):
 
 # MediaPipe hand skeleton connections (pairs of landmark indices)
 HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),        # thumb
-    (0, 5), (5, 6), (6, 7), (7, 8),        # index
-    (0, 9), (9, 10), (10, 11), (11, 12),   # middle
-    (0, 13), (13, 14), (14, 15), (15, 16), # ring
-    (0, 17), (17, 18), (18, 19), (19, 20), # pinky
-    (5, 9), (9, 13), (13, 17),             # palm
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 4),  # thumb
+    (0, 5),
+    (5, 6),
+    (6, 7),
+    (7, 8),  # index
+    (0, 9),
+    (9, 10),
+    (10, 11),
+    (11, 12),  # middle
+    (0, 13),
+    (13, 14),
+    (14, 15),
+    (15, 16),  # ring
+    (0, 17),
+    (17, 18),
+    (18, 19),
+    (19, 20),  # pinky
+    (5, 9),
+    (9, 13),
+    (13, 17),  # palm
 ]
 
 
@@ -328,7 +353,9 @@ def main():
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     try:
-        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.setWindowProperty(
+            window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
+        )
     except Exception:
         pass
 
@@ -379,12 +406,14 @@ def main():
         background = np.zeros_like(frame)
         bg_base = np.array([14, 8, 18], dtype=np.float32)
         bg_tint = np.array([8, 10, 20], dtype=np.float32)
-        wave = (0.5 + 0.5 * math.sin(t * 0.35))
+        wave = 0.5 + 0.5 * math.sin(t * 0.35)
         base = bg_base + bg_tint * wave
         background[:] = base.astype(np.uint8)
 
         vignette_rgb = np.dstack([vignette_cache, vignette_cache, vignette_cache])
-        frame = np.clip(background.astype(np.float32) * vignette_rgb + 2.0, 0, 255).astype(np.uint8)
+        frame = np.clip(
+            background.astype(np.float32) * vignette_rgb + 2.0, 0, 255
+        ).astype(np.uint8)
 
         open_palm = False
         hand_found = False
@@ -512,14 +541,25 @@ def main():
 
         ring_color = (40, 170, 255) if pinch_active else (100, 90, 210)
         ring_r = int((90 + 45 * breathe) * zoom + 55 * blast_factor)
-        cv2.circle(glow, (int(core_center[0]), int(core_center[1])), ring_r, ring_color, 2, cv2.LINE_AA)
+        cv2.circle(
+            glow,
+            (int(core_center[0]), int(core_center[1])),
+            ring_r,
+            ring_color,
+            2,
+            cv2.LINE_AA,
+        )
 
         glow_blur = cv2.GaussianBlur(glow, (0, 0), sigmaX=8.0, sigmaY=8.0)
         frame = cv2.addWeighted(frame, 1.0, glow_blur, 0.95, 0.0)
 
         card_draw_list = []
         for i, card in enumerate(cards):
-            ang = card["base_angle"] + rotation_angle + (0.06 * t if i % 2 == 0 else -0.05 * t)
+            ang = (
+                card["base_angle"]
+                + rotation_angle
+                + (0.06 * t if i % 2 == 0 else -0.05 * t)
+            )
             depth = (math.sin(ang) + 1.0) * 0.5
             scale = (0.62 + 0.52 * depth) * zoom
             radius = card["radius"] * (0.95 + 0.25 * (1.0 - depth)) * zoom
@@ -538,7 +578,9 @@ def main():
             card["blast_offset"] += card["blast_vel"]
 
             if not pinch_active:
-                card["blast_offset"] = lerp(card["blast_offset"], np.zeros(2, dtype=np.float32), 0.12)
+                card["blast_offset"] = lerp(
+                    card["blast_offset"], np.zeros(2, dtype=np.float32), 0.12
+                )
 
             pos = base_pos + card["blast_offset"]
             brightness = 0.8 + 0.35 * depth
@@ -556,7 +598,9 @@ def main():
                 continue
 
             card_img = cv2.resize(base, (tw, th), interpolation=cv2.INTER_LINEAR)
-            card_img = np.clip(card_img.astype(np.float32) * brightness, 0, 255).astype(np.uint8)
+            card_img = np.clip(card_img.astype(np.float32) * brightness, 0, 255).astype(
+                np.uint8
+            )
 
             mask = make_rounded_card_mask(tw, th, radius=int(min(tw, th) * 0.08))
 
@@ -564,14 +608,23 @@ def main():
             y = int(pos[1] - th // 2)
 
             glow_box = np.zeros_like(frame)
-            cv2.rectangle(glow_box, (x - 6, y - 6), (x + tw + 6, y + th + 6), (100, 70, 255), -1, cv2.LINE_AA)
+            cv2.rectangle(
+                glow_box,
+                (x - 6, y - 6),
+                (x + tw + 6, y + th + 6),
+                (100, 70, 255),
+                -1,
+                cv2.LINE_AA,
+            )
             glow_box = cv2.GaussianBlur(glow_box, (0, 0), 10)
             frame = cv2.addWeighted(frame, 1.0, glow_box, 0.23 + 0.2 * depth, 0)
 
             overlay_image_with_mask(frame, card_img, x, y, mask)
 
             border = np.zeros((th, tw, 3), dtype=np.uint8)
-            cv2.rectangle(border, (0, 0), (tw - 1, th - 1), (235, 235, 245), 2, cv2.LINE_AA)
+            cv2.rectangle(
+                border, (0, 0), (tw - 1, th - 1), (235, 235, 245), 2, cv2.LINE_AA
+            )
             border_mask = make_rounded_card_mask(tw, th, radius=int(min(tw, th) * 0.08))
             overlay_image_with_mask(frame, border, x, y, border_mask)
 
@@ -579,13 +632,33 @@ def main():
             tx = int(pos[0] - tw // 2)
             ty = int(y + th + 24)
             if ty < h - 5:
-                cv2.putText(frame, cap_text, (tx + 1, ty + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (15, 15, 20), 2, cv2.LINE_AA)
-                cv2.putText(frame, cap_text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (240, 236, 245), 1, cv2.LINE_AA)
+                cv2.putText(
+                    frame,
+                    cap_text,
+                    (tx + 1, ty + 1),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.56,
+                    (15, 15, 20),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.putText(
+                    frame,
+                    cap_text,
+                    (tx, ty),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.56,
+                    (240, 236, 245),
+                    1,
+                    cv2.LINE_AA,
+                )
 
         if open_palm and blast_factor < 0.18:
             chars_per_sec = 34.0
             total_chars = sum(len(line) for line in LOVE_LETTER) + len(LOVE_LETTER) - 1
-            letter_char_progress = clamp(letter_char_progress + dt * chars_per_sec, 0.0, float(total_chars))
+            letter_char_progress = clamp(
+                letter_char_progress + dt * chars_per_sec, 0.0, float(total_chars)
+            )
 
             panel_w = int(w * 0.52)
             panel_h = int(h * 0.33)
@@ -593,17 +666,40 @@ def main():
             py = int(h * 0.58)
 
             panel = frame.copy()
-            cv2.rectangle(panel, (px, py), (px + panel_w, py + panel_h), (26, 20, 42), -1, cv2.LINE_AA)
+            cv2.rectangle(
+                panel,
+                (px, py),
+                (px + panel_w, py + panel_h),
+                (26, 20, 42),
+                -1,
+                cv2.LINE_AA,
+            )
             frame = cv2.addWeighted(frame, 0.7, panel, 0.3, 0.0)
-            cv2.rectangle(frame, (px, py), (px + panel_w, py + panel_h), (180, 150, 240), 1, cv2.LINE_AA)
+            cv2.rectangle(
+                frame,
+                (px, py),
+                (px + panel_w, py + panel_h),
+                (180, 150, 240),
+                1,
+                cv2.LINE_AA,
+            )
 
             remaining = int(letter_char_progress)
             y_cursor = py + 38
             for line in LOVE_LETTER:
                 reveal = min(len(line), remaining)
                 show = line[:reveal]
-                remaining -= (len(line) + 1)
-                cv2.putText(frame, show, (px + 20, y_cursor), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (236, 228, 248), 1, cv2.LINE_AA)
+                remaining -= len(line) + 1
+                cv2.putText(
+                    frame,
+                    show,
+                    (px + 20, y_cursor),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.62,
+                    (236, 228, 248),
+                    1,
+                    cv2.LINE_AA,
+                )
                 y_cursor += 30
         else:
             letter_char_progress = max(0.0, letter_char_progress - dt * 22.0)
@@ -614,13 +710,55 @@ def main():
 
         # --- Hand status indicator ---
         if hand_found:
-            status = "PINCH" if pinch_active else ("OPEN PALM" if open_palm else "TRACKING")
-            status_color = (0, 200, 255) if pinch_active else ((0, 255, 180) if open_palm else (200, 200, 200))
-            cv2.putText(frame, status, (w - 200, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 3, cv2.LINE_AA)
-            cv2.putText(frame, status, (w - 200, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2, cv2.LINE_AA)
+            status = (
+                "PINCH" if pinch_active else ("OPEN PALM" if open_palm else "TRACKING")
+            )
+            status_color = (
+                (0, 200, 255)
+                if pinch_active
+                else ((0, 255, 180) if open_palm else (200, 200, 200))
+            )
+            cv2.putText(
+                frame,
+                status,
+                (w - 200, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 0),
+                3,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                frame,
+                status,
+                (w - 200, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                status_color,
+                2,
+                cv2.LINE_AA,
+            )
 
-        cv2.putText(frame, HELP_TEXT, (16, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (10, 10, 10), 3, cv2.LINE_AA)
-        cv2.putText(frame, HELP_TEXT, (16, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (240, 235, 245), 1, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            HELP_TEXT,
+            (16, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            (10, 10, 10),
+            3,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            HELP_TEXT,
+            (16, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            (240, 235, 245),
+            1,
+            cv2.LINE_AA,
+        )
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
