@@ -1,4 +1,5 @@
 import math
+import os
 import time
 import random
 
@@ -37,7 +38,42 @@ PULL_SENSITIVITY = 15.0
 AIM_SENSITIVITY = 2.5
 
 YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
-MEMORY_DURATION = 3.5
+MEMORY_DURATION = 5.0
+
+MEMORY_TEXTS = {
+    2018: "where it all began",
+    2019: "falling for you, one day at a time",
+    2020: "together through everything",
+    2021: "growing closer, growing stronger",
+    2022: "every moment with you is magic",
+    2023: "welcoming an angel into our life",
+    2024: "building a family together",
+    2025: "you are always my biggest blessing",
+    2026: "and the best is yet to come.\n I LOVE YOU, MY VALENTINE",
+}
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_memory_img_cache: dict[int, np.ndarray | None] = {}
+
+
+def _load_memory_image(year):
+    """Load and cache a memory photo for the given year."""
+    if year in _memory_img_cache:
+        return _memory_img_cache[year]
+    path = os.path.join(_SCRIPT_DIR, "memories", f"{year}.jpg")
+    img = cv2.imread(path)
+    if img is None:
+        _memory_img_cache[year] = None
+        return None
+    max_w, max_h = 420, 300
+    h, w = img.shape[:2]
+    scale = min(max_w / w, max_h / h)
+    img = cv2.resize(
+        img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA
+    )
+    _memory_img_cache[year] = img
+    return img
+
 
 # Sky/ground gradient endpoints (BGR, float for lerp)
 SKY_TOP = np.array([15, 8, 12], dtype=np.float64)
@@ -260,20 +296,82 @@ class YearTarget3D:
         if sx < -r or sx > CANVAS_W + r or sy < -r or sy > CANVAS_H + r:
             return
 
+        # Heart outline points
+        heart_pts = []
+        for deg in range(0, 360, 6):
+            t = math.radians(deg)
+            hx = 16 * math.sin(t) ** 3
+            hy = -(
+                13 * math.cos(t)
+                - 5 * math.cos(2 * t)
+                - 2 * math.cos(3 * t)
+                - math.cos(4 * t)
+            )
+            heart_pts.append((int(sx + hx * r / 17), int(sy + hy * r / 17)))
+        heart_np = np.array(heart_pts, dtype=np.int32)
+
         if self.hit:
-            g = min(1.0, self.glow_t * 2)
-            gr = int(r + r * 0.4 * g)
-            overlay = canvas.copy()
-            cv2.circle(overlay, (sx, sy), gr, GOLD, -1, cv2.LINE_AA)
-            a = 0.3 * max(0.0, 1.0 - self.glow_t * 0.8)
-            cv2.addWeighted(overlay, a, canvas, 1 - a, 0, canvas)
-            cv2.circle(canvas, (sx, sy), r, fog_color(GOLD, self.wz), -1, cv2.LINE_AA)
+            # --- Fill up like pouring water ---
+            fill_frac = min(1.0, self.glow_t / 1.5)
+            ys = [p[1] for p in heart_pts]
+            h_min, h_max = min(ys), max(ys)
+            wave = math.sin(self.glow_t * 8) * 2 * (1.0 - fill_frac)
+            cutoff_y = int(h_max - fill_frac * (h_max - h_min) + wave)
+
+            fill_color = fog_color(HEART_RED, self.wz)
+            fill_layer = canvas.copy()
+            cv2.fillPoly(fill_layer, [heart_np], fill_color, cv2.LINE_AA)
+            # Only keep the filled portion below the cutoff line
+            fill_layer[: max(0, cutoff_y)] = canvas[: max(0, cutoff_y)]
+            np.copyto(canvas, fill_layer)
+
+            # Soft glow behind once mostly filled
+            if fill_frac > 0.5:
+                glow_a = 0.2 * min(1.0, (fill_frac - 0.5) * 2)
+                glow_r = int(r * 1.3)
+                glow_layer = canvas.copy()
+                draw_small_heart(glow_layer, sx, sy, glow_r, GOLD)
+                cv2.addWeighted(glow_layer, glow_a, canvas, 1 - glow_a, 0, canvas)
+
+            # Outline
+            cv2.polylines(
+                canvas,
+                [heart_np],
+                True,
+                fog_color(PINK, self.wz),
+                max(1, int(r / 10)),
+                cv2.LINE_AA,
+            )
+
+            # --- Sparkle hearts bursting out ---
+            if self.glow_t < 2.5:
+                for i in range(8):
+                    ang = i * math.pi * 2 / 8 + math.sin(self.glow_t * 3 + i) * 0.3
+                    spd = 0.5 + (i % 3) * 0.25
+                    dist = self.glow_t * r * spd
+                    sp_x = int(sx + math.cos(ang) * dist)
+                    sp_y = int(sy + math.sin(ang) * dist - self.glow_t * r * 0.25)
+                    life = max(0.0, 1.0 - self.glow_t / 2.5)
+                    sp_sz = max(3, int(r * 0.22 * life))
+                    sp_c = tuple(int(v * life) for v in fog_color(PINK, self.wz))
+                    draw_small_heart(canvas, sp_x, sp_y, sp_sz, sp_c)
+
             tc = (30, 30, 30)
         else:
-            cv2.circle(
-                canvas, (sx, sy), r, fog_color((50, 30, 60), self.wz), -1, cv2.LINE_AA
+            # Transparent dark fill + pink outline
+            fill_overlay = canvas.copy()
+            cv2.fillPoly(
+                fill_overlay, [heart_np], fog_color((40, 20, 50), self.wz), cv2.LINE_AA
             )
-            cv2.circle(canvas, (sx, sy), r, fog_color(PINK, self.wz), 2, cv2.LINE_AA)
+            cv2.addWeighted(fill_overlay, 0.3, canvas, 0.7, 0, canvas)
+            cv2.polylines(
+                canvas,
+                [heart_np],
+                True,
+                fog_color(PINK, self.wz),
+                max(1, int(r / 10)),
+                cv2.LINE_AA,
+            )
             tc = fog_color(SOFT_WHITE, self.wz)
 
         text = str(self.year)
@@ -434,7 +532,7 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
 
     par_x = int((aim_x - 0.5) * 16)
     par_y = int((aim_y - 0.5) * 12)
-    grip = (int(CANVAS_W * 0.70 + par_x), int(CANVAS_H * 0.66 + par_y))
+    grip = (int(CANVAS_W * 0.82 + par_x), int(CANVAS_H * 0.66 + par_y))
     aim_pt = (aim_x * CANVAS_W, aim_y * CANVAS_H)
     forward = _normalize2(aim_pt[0] - grip[0], aim_pt[1] - grip[1])
     perp = _choose_perp_sign(forward, grip)
@@ -497,8 +595,8 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
     )
 
     # Arrow aligned with forward (parallel to line of sight).
-    near_w = 12 + int(4 * power)
-    _draw_tapered_arrow(canvas, (nock_x, nock_y), (tip_x, tip_y), perp, near_w, 2)
+    near_w = 4 + int(2 * power)
+    _draw_tapered_arrow(canvas, (nock_x, nock_y), (tip_x, tip_y), perp, near_w, 1)
     draw_small_heart(canvas, int(tip_x), int(tip_y), 5, HEART_RED)
 
     # Bow limbs above string/arrow.
@@ -508,28 +606,28 @@ def draw_fps_bow(canvas, power, nocked, aim_x, aim_y, bow_anchor_px=None):
         c = tuple(int(v * (1.0 - 0.24 * frac)) for v in BOW_COLOR)
         cv2.line(canvas, limb_pts[i], limb_pts[i + 1], c, th, cv2.LINE_AA)
 
-    # Grip ellipse oriented along perp (limb axis in top-down view).
-    limb_ang = math.degrees(math.atan2(perp[1], perp[0]))
-    cv2.ellipse(canvas, gp, (14, 28), limb_ang, 0, 360, (76, 56, 118), -1, cv2.LINE_AA)
-    cv2.ellipse(canvas, gp, (14, 28), limb_ang, 0, 360, (124, 98, 172), 2, cv2.LINE_AA)
+    # Grip: narrow rectangular wrap, not a fat oval.
+    grip_hw, grip_hh = 6, 20  # slim along forward, longer along perp
+    grip_corners = []
+    for sx_sign, sy_sign in [(-1, -1), (1, -1), (1, 1), (-1, 1)]:
+        grip_corners.append(
+            _fps_local_to_world(gp, forward, perp, sx_sign * grip_hw, sy_sign * grip_hh)
+        )
+    grip_poly = np.array(grip_corners, dtype=np.int32)
+    cv2.fillConvexPoly(canvas, grip_poly, (76, 56, 118), cv2.LINE_AA)
+    cv2.polylines(canvas, [grip_poly], True, (124, 98, 172), 2, cv2.LINE_AA)
 
-    # Hand/fingers behind grip (toward archer, -forward direction).
+    # Fingers wrapping around the grip (3 thin bands across the handle).
     hand_overlay = canvas.copy()
-    palm = (
-        int(gp[0] - forward[0] * 22 + perp[0] * 5),
-        int(gp[1] - forward[1] * 22 + perp[1] * 5),
-    )
-    cv2.ellipse(
-        hand_overlay, palm, (21, 15), limb_ang, 0, 360, (150, 122, 182), -1, cv2.LINE_AA
-    )
-    for j in range(4):
-        off = -13 + j * 9
-        fx = int(gp[0] - forward[0] * 24 + perp[0] * off)
-        fy = int(gp[1] - forward[1] * 24 + perp[1] * off)
-        cv2.circle(hand_overlay, (fx, fy), 5, (170, 141, 196), -1, cv2.LINE_AA)
-    cv2.addWeighted(hand_overlay, 0.58, canvas, 0.42, 0, canvas)
+    for j in range(3):
+        off = -10 + j * 10  # spread along perp
+        fa = _fps_local_to_world(gp, forward, perp, -8, off)
+        fb = _fps_local_to_world(gp, forward, perp, 8, off)
+        cv2.line(hand_overlay, fa, fb, (160, 132, 190), 4, cv2.LINE_AA)
+        cv2.line(hand_overlay, fa, fb, (140, 112, 170), 2, cv2.LINE_AA)
+    cv2.addWeighted(hand_overlay, 0.5, canvas, 0.5, 0, canvas)
 
-    cv2.circle(canvas, (nock_ix, nock_iy), 4, (236, 228, 248), -1, cv2.LINE_AA)
+    cv2.circle(canvas, (nock_ix, nock_iy), 2, (236, 228, 248), -1, cv2.LINE_AA)
     if power > 0.55 and nocked:
         glow = np.zeros_like(canvas)
         cv2.circle(
@@ -609,44 +707,141 @@ def draw_power_meter(canvas, power):
 
 
 def draw_memory_overlay(canvas, year, timer):
+    # Fade envelope: in 0-0.8s, hold, out last 0.8s
+    if timer < 0.8:
+        fade = timer / 0.8
+    elif timer > MEMORY_DURATION - 0.8:
+        fade = max(0.0, (MEMORY_DURATION - timer) / 0.8)
+    else:
+        fade = 1.0
+
+    # Dreamy tint
     tint = np.zeros_like(canvas)
     for row in range(CANVAS_H):
         r = row / CANVAS_H
         tint[row, :] = (int(30 + 25 * r), int(10 + 15 * r), int(50 + 45 * r))
-    a = min(0.75, timer * 0.4)
-    cv2.addWeighted(tint, a, canvas, 1 - a, 0, canvas)
+    cv2.addWeighted(
+        tint, min(0.8, fade * 0.8), canvas, 1 - min(0.8, fade * 0.8), 0, canvas
+    )
 
-    cx, cy = CANVAS_W // 2, CANVAS_H // 2 - 30
+    if fade < 0.05:
+        return
+
     font = cv2.FONT_HERSHEY_SIMPLEX
+    script = cv2.FONT_HERSHEY_SCRIPT_SIMPLEX
+    cx = CANVAS_W // 2
+    img = _load_memory_image(year)
 
-    text = str(year)
-    (tw, th), _ = cv2.getTextSize(text, font, 3.0, 4)
-    for rr in range(3, 0, -1):
-        gc = tuple(int(v * rr / 3) for v in (100, 80, 200))
+    if img is not None:
+        ih, iw = img.shape[:2]
+        pad_s, pad_t, pad_b = 14, 14, 62
+
+        # Polaroid frame centered, nudged up
+        fw, fh = iw + pad_s * 2, ih + pad_t + pad_b
+        fx = cx - fw // 2
+        fy = CANVAS_H // 2 - fh // 2 - 25
+
+        # Soft shadow
+        cv2.rectangle(
+            canvas, (fx + 5, fy + 5), (fx + fw + 5, fy + fh + 5), (12, 8, 18), -1
+        )
+        # White frame
+        cv2.rectangle(canvas, (fx, fy), (fx + fw, fy + fh), (248, 244, 252), -1)
+        # Thin pink border
+        cv2.rectangle(canvas, (fx, fy), (fx + fw, fy + fh), (200, 170, 230), 2)
+
+        # Photo blended with fade
+        px, py = fx + pad_s, fy + pad_t
+        roi = canvas[py : py + ih, px : px + iw]
+        canvas[py : py + ih, px : px + iw] = cv2.addWeighted(
+            img, fade, roi, 1 - fade, 0
+        )
+
+        # Small heart accent in corner of polaroid
+        draw_small_heart(canvas, fx + fw - 22, fy + 20, 8, HEART_RED)
+
+        # Year inside polaroid bottom strip
+        yr_text = str(year)
+        (yw, yh), _ = cv2.getTextSize(yr_text, script, 1.4, 2)
+        yr_x = fx + fw // 2 - yw // 2
+        yr_y = fy + pad_t + ih + (pad_b + yh) // 2
         cv2.putText(
             canvas,
-            text,
-            (cx - tw // 2 + rr, cy + th // 2 + rr),
-            font,
-            3.0,
-            gc,
-            4 + rr * 2,
+            yr_text,
+            (yr_x + 1, yr_y + 1),
+            script,
+            1.4,
+            (180, 150, 210),
+            3,
             cv2.LINE_AA,
         )
-    cv2.putText(
-        canvas, text, (cx - tw // 2, cy + th // 2), font, 3.0, GOLD, 4, cv2.LINE_AA
-    )
+        cv2.putText(
+            canvas, yr_text, (yr_x, yr_y), script, 1.4, (60, 40, 100), 2, cv2.LINE_AA
+        )
 
-    sub = f"~ memories of {year} ~"
-    (sw, _), _ = cv2.getTextSize(sub, font, 0.8, 2)
-    cv2.putText(
-        canvas, sub, (cx - sw // 2, cy + th // 2 + 65), font, 0.8, PINK, 2, cv2.LINE_AA
-    )
+        # Caption below polaroid (supports \n for multi-line)
+        caption = MEMORY_TEXTS.get(year, f"memories of {year}")
+        lines = caption.split("\n")
+        line_y = fy + fh + 40
+        for li, line_text in enumerate(lines):
+            cap = f"~ {line_text.strip()} ~" if li == 0 else line_text.strip()
+            (cw, ch), _ = cv2.getTextSize(cap, font, 0.65, 2)
+            cap_x = cx - cw // 2
+            cv2.putText(canvas, cap, (cap_x + 1, line_y + 1),
+                        font, 0.65, (50, 25, 60), 3, cv2.LINE_AA)
+            cv2.putText(canvas, cap, (cap_x, line_y),
+                        font, 0.65, PINK, 2, cv2.LINE_AA)
+            if li == 0:
+                draw_small_heart(canvas, cap_x - 20, line_y - 6, 7, HEART_RED)
+                draw_small_heart(canvas, cap_x + cw + 20, line_y - 6, 7, HEART_RED)
+            line_y += ch + 16
+    else:
+        # No image — large year + caption text
+        cy = CANVAS_H // 2 - 30
+        yr_text = str(year)
+        (tw, th), _ = cv2.getTextSize(yr_text, font, 3.0, 4)
+        for rr in range(3, 0, -1):
+            gc = tuple(int(v * rr / 3) for v in (100, 80, 200))
+            cv2.putText(
+                canvas,
+                yr_text,
+                (cx - tw // 2 + rr, cy + th // 2 + rr),
+                font,
+                3.0,
+                gc,
+                4 + rr * 2,
+                cv2.LINE_AA,
+            )
+        cv2.putText(
+            canvas,
+            yr_text,
+            (cx - tw // 2, cy + th // 2),
+            font,
+            3.0,
+            GOLD,
+            4,
+            cv2.LINE_AA,
+        )
 
-    for i in range(8):
-        hx = int(CANVAS_W * 0.08 + (i * 151) % int(CANVAS_W * 0.84))
-        hy = int(CANVAS_H * 0.2 + math.sin(timer * 2.5 + i) * 40)
-        draw_small_heart(canvas, hx, hy, 13, HEART_RED)
+        caption = MEMORY_TEXTS.get(year, f"memories of {year}")
+        lines = caption.split("\n")
+        line_y = cy + th // 2 + 65
+        for li, line_text in enumerate(lines):
+            cap = f"~ {line_text.strip()} ~" if li == 0 else line_text.strip()
+            (sw, sh), _ = cv2.getTextSize(cap, font, 0.8, 2)
+            cv2.putText(canvas, cap, (cx - sw // 2, line_y),
+                        font, 0.8, PINK, 2, cv2.LINE_AA)
+            line_y += sh + 18
+
+    # Floating hearts around the edges
+    for i in range(10):
+        hx = int(CANVAS_W * 0.05 + (i * 137) % int(CANVAS_W * 0.90))
+        bob = math.sin(timer * 2.0 + i * 0.7) * 30
+        hy = int(CANVAS_H * 0.10 + bob) if i < 5 else int(CANVAS_H * 0.85 + bob)
+        sz = 9 + int(math.sin(timer * 1.5 + i) * 4)
+        ha = fade * (0.5 + 0.5 * math.sin(timer * 2 + i))
+        hc = (int(70 * ha), int(50 * ha), int(220 * ha))
+        draw_small_heart(canvas, hx, hy, sz, hc)
 
 
 # ---------------------------------------------------------------------------
@@ -736,15 +931,15 @@ def main():
 
     # Targets spread at different depths
     placements = [
-        (-7.2, -4.2, 15),
-        (6.8, -1.1, 18),
-        (-2.8, -4.9, 20),
-        (8.4, -2.6, 22),
-        (-8.6, -0.8, 26),
-        (4.3, -5.2, 30),
-        (0.0, -3.6, 34),
-        (1.6, -2.2, 39),
-        (-4.8, -1.6, 44),
+        (-5.5, -4.2, 15),
+        (1.5, -1.1, 18),
+        (-3.5, -4.9, 20),
+        (3.5, -2.6, 22),
+        (-7.0, -0.8, 26),
+        (-0.5, -5.2, 30),
+        (-3.0, -3.6, 34),
+        (1.0, -2.2, 39),
+        (-5.0, -1.6, 44),
     ]
     targets = [YearTarget3D(yr, *pos) for yr, pos in zip(YEARS, placements)]
 
@@ -856,8 +1051,9 @@ def main():
             tgt.update(dt, elapsed)
             tgt.draw(canvas)
 
-        if mem_year is not None:
-            draw_memory_overlay(canvas, mem_year, mem_timer)
+        mem_delay = 2.0  # let heart fill animation play before showing overlay
+        if mem_year is not None and mem_timer > mem_delay:
+            draw_memory_overlay(canvas, mem_year, mem_timer - mem_delay)
         else:
             # Arrows (far first)
             for a in sorted(arrows, key=lambda ar: -ar.z):
@@ -910,7 +1106,7 @@ def main():
 
         cv2.putText(
             canvas,
-            "Valentine Arrow",
+            "Our Love Story",
             (CANVAS_W // 2 - 110, 32),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -921,10 +1117,12 @@ def main():
 
         # PiP webcam (top-left, small)
         pip = cv2.resize(frame, (PIP_W, PIP_H))
-        canvas[10 : 10 + PIP_H, 10 : 10 + PIP_W] = pip
-        cv2.rectangle(canvas, (9, 9), (11 + PIP_W, 11 + PIP_H), (100, 70, 100), 1)
+        pip_x = CANVAS_W - PIP_W - 10
+        pip_y = CANVAS_H - PIP_H - 10
+        canvas[pip_y : pip_y + PIP_H, pip_x : pip_x + PIP_W] = pip
+        cv2.rectangle(canvas, (pip_x - 1, pip_y - 1), (pip_x + PIP_W + 1, pip_y + PIP_H + 1), (100, 70, 100), 1)
 
-        cv2.imshow("Valentine Arrow", canvas)
+        cv2.imshow("Our Love Story", canvas)
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):
             break
