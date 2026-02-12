@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Annotate Cuboid</title>
+  <style>
+    body { font-family: monospace; margin: 20px; }
+    canvas { border: 1px solid #ccc; cursor: crosshair; }
+    #output { white-space: pre; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h3>Click 6 corners of the cuboid</h3>
+  <input type="file" id="fileInput" accept="image/*"><br><br>
+  <canvas id="canvas"></canvas>
+  <div id="output"></div>
+  <button id="copy" style="display:none; margin-top:10px;">Copy to clipboard</button>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const output = document.getElementById("output");
+    const copyBtn = document.getElementById("copy");
+    const points = [];
+    let img;
+
+    document.getElementById("fileInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    canvas.addEventListener("click", (e) => {
+      if (!img) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+
+      points.push([x, y]);
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = "red";
+      ctx.fill();
+      ctx.font = "20px monospace";
+      ctx.fillText(points.length, x + 10, y - 10);
+
+      let text = "";
+      points.forEach((p, i) => { text += `Point ${i + 1}: ${p[0]} ${p[1]}\n`; });
+      output.textContent = text;
+      copyBtn.style.display = "inline";
+    });
+
+    copyBtn.addEventListener("click", () => {
+      const text = points.map(p => `${p[0]} ${p[1]}`).join("\n");
+      navigator.clipboard.writeText(text);
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => copyBtn.textContent = "Copy to clipboard", 1500);
+    });
+  </script>
+</body>
+</html>
