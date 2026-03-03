@@ -1,9 +1,17 @@
 import numpy as np
 import cv2
 import os
+import sys
+
+if len(sys.argv) < 2:
+    print("Usage: python assignment-2.py <image_name>")
+    sys.exit(1)
 
 working_dir = os.path.dirname(os.path.abspath(__file__))
-img = cv2.imread(os.path.join(working_dir, "lena_512.jpg"), cv2.IMREAD_GRAYSCALE)
+img = cv2.imread(os.path.join(working_dir, sys.argv[1]), cv2.IMREAD_GRAYSCALE)
+if img is None:
+    print(f"Error: could not read image '{sys.argv[1]}'")
+    sys.exit(1)
 
 
 # Manual convolution
