@@ -392,15 +392,44 @@ def evaluate_cnn(model, device):
 
 
 def evaluate(y_true, y_pred, method_name):
-    """Print accuracy, per-class FP/FN rates. Returns a formatted string for saving."""
-    accuracy = np.mean(y_true == y_pred) * 100
+    """Print detailed results. Returns a formatted string for saving."""
+    total = len(y_true)
+    correct = np.sum(y_true == y_pred)
+    accuracy = correct / total * 100
 
     lines = []
     lines.append(f"[{method_name}]")
-    lines.append(f"Accuracy: {accuracy:.1f}%")
-    lines.append(f"{'Category':<14} {'FP Rate':>8} {'FN Rate':>8}")
-    lines.append("-" * 32)
+    lines.append(f"Overall: {correct}/{total} correctly classified ({accuracy:.1f}%)")
+    lines.append("")
 
+    # Per-category correct classification
+    lines.append("Correctly Classified per Category:")
+    lines.append(f"  {'Category':<14} {'Correct':>8} {'Total':>6} {'Accuracy':>9}")
+    lines.append(f"  {'-' * 40}")
+    for cat in CATEGORIES:
+        cat_mask = y_true == cat
+        cat_total = np.sum(cat_mask)
+        cat_correct = np.sum((y_true == cat) & (y_pred == cat))
+        cat_acc = cat_correct / cat_total * 100 if cat_total > 0 else 0
+        lines.append(f"  {cat:<14} {cat_correct:>5}/{cat_total:<5} {cat_acc:>8.1f}%")
+
+    # Confusion matrix
+    lines.append("")
+    lines.append("Confusion Matrix (rows=actual, cols=predicted):")
+    header = f"  {'':>14}" + "".join(f"{c:>12}" for c in CATEGORIES)
+    lines.append(header)
+    for actual in CATEGORIES:
+        row = f"  {actual:>14}"
+        for predicted in CATEGORIES:
+            count = np.sum((y_true == actual) & (y_pred == predicted))
+            row += f"{count:>12}"
+        lines.append(row)
+
+    # FP and FN rates
+    lines.append("")
+    lines.append("False Positive and False Negative Rates:")
+    lines.append(f"  {'Category':<14} {'FP':>4} {'FP Rate':>8} {'FN':>5} {'FN Rate':>8}")
+    lines.append(f"  {'-' * 42}")
     for cat in CATEGORIES:
         fp = np.sum((y_pred == cat) & (y_true != cat))
         fn = np.sum((y_true == cat) & (y_pred != cat))
@@ -409,7 +438,7 @@ def evaluate(y_true, y_pred, method_name):
 
         fp_rate = fp / total_not_cat * 100 if total_not_cat > 0 else 0
         fn_rate = fn / total_cat * 100 if total_cat > 0 else 0
-        lines.append(f"{cat:<14} {fp_rate:>7.1f}% {fn_rate:>7.1f}%")
+        lines.append(f"  {cat:<14} {fp:>4} {fp_rate:>7.1f}% {fn:>5} {fn_rate:>7.1f}%")
 
     block = "\n".join(lines)
     print(f"\n  {block.replace(chr(10), chr(10) + '  ')}\n")

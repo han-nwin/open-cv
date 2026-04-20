@@ -1,0 +1,112 @@
+Scene Recognition and Classification Results
+==================================================
+
+[4a: k-NN Raw Pixels]
+Overall: 77/200 correctly classified (38.5%)
+
+Correctly Classified per Category:
+  Category        Correct  Total  Accuracy
+  ----------------------------------------
+  bedroom            4/50         8.0%
+  desert            45/50        90.0%
+  landscape         21/50        42.0%
+  rainforest         7/50        14.0%
+
+Confusion Matrix (rows=actual, cols=predicted):
+                     bedroom      desert   landscape  rainforest
+         bedroom           4          37           4           5
+          desert           1          45           3           1
+       landscape           0          28          21           1
+      rainforest           1          26          16           7
+
+False Positive and False Negative Rates:
+  Category         FP  FP Rate    FN  FN Rate
+  ------------------------------------------
+  bedroom           2     1.3%    46    92.0%
+  desert           91    60.7%     5    10.0%
+  landscape        23    15.3%    29    58.0%
+  rainforest        7     4.7%    43    86.0%
+
+--------------------------------------------------
+
+[4b: k-NN SIFT BoVW]
+Overall: 126/200 correctly classified (63.0%)
+
+Correctly Classified per Category:
+  Category        Correct  Total  Accuracy
+  ----------------------------------------
+  bedroom           29/50        58.0%
+  desert            25/50        50.0%
+  landscape         30/50        60.0%
+  rainforest        42/50        84.0%
+
+Confusion Matrix (rows=actual, cols=predicted):
+                     bedroom      desert   landscape  rainforest
+         bedroom          29           3          10           8
+          desert          13          25           8           4
+       landscape           4           6          30          10
+      rainforest           2           0           6          42
+
+False Positive and False Negative Rates:
+  Category         FP  FP Rate    FN  FN Rate
+  ------------------------------------------
+  bedroom          19    12.7%    21    42.0%
+  desert            9     6.0%    25    50.0%
+  landscape        24    16.0%    20    40.0%
+  rainforest       22    14.7%     8    16.0%
+
+--------------------------------------------------
+
+[4c: k-NN Histogram]
+Overall: 105/200 correctly classified (52.5%)
+
+Correctly Classified per Category:
+  Category        Correct  Total  Accuracy
+  ----------------------------------------
+  bedroom           25/50        50.0%
+  desert            20/50        40.0%
+  landscape         26/50        52.0%
+  rainforest        34/50        68.0%
+
+Confusion Matrix (rows=actual, cols=predicted):
+                     bedroom      desert   landscape  rainforest
+         bedroom          25           9          15           1
+          desert          19          20          10           1
+       landscape          10           5          26           9
+      rainforest           4           0          12          34
+
+False Positive and False Negative Rates:
+  Category         FP  FP Rate    FN  FN Rate
+  ------------------------------------------
+  bedroom          33    22.0%    25    50.0%
+  desert           14     9.3%    30    60.0%
+  landscape        37    24.7%    24    48.0%
+  rainforest       11     7.3%    16    32.0%
+
+--------------------------------------------------
+
+[4d: CNN]
+Overall: 127/200 correctly classified (63.5%)
+
+Correctly Classified per Category:
+  Category        Correct  Total  Accuracy
+  ----------------------------------------
+  bedroom           24/50        48.0%
+  desert            34/50        68.0%
+  landscape         27/50        54.0%
+  rainforest        42/50        84.0%
+
+Confusion Matrix (rows=actual, cols=predicted):
+                     bedroom      desert   landscape  rainforest
+         bedroom          24          10           9           7
+          desert           7          34           9           0
+       landscape           5          11          27           7
+      rainforest           3           0           5          42
+
+False Positive and False Negative Rates:
+  Category         FP  FP Rate    FN  FN Rate
+  ------------------------------------------
+  bedroom          15    10.0%    26    52.0%
+  desert           21    14.0%    16    32.0%
+  landscape        23    15.3%    23    46.0%
+  rainforest       14     9.3%     8    16.0%
