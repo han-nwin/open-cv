@@ -1,0 +1,42 @@
+Per-image metrics:
+2011_000006  pix_acc=0.551  mIoU=0.154
+2011_000051  pix_acc=0.935  mIoU=0.856
+2011_000054  pix_acc=0.946  mIoU=0.599
+2011_000068  pix_acc=0.991  mIoU=0.618
+2011_000069  pix_acc=0.954  mIoU=0.357
+2011_000070  pix_acc=0.799  mIoU=0.329
+2011_000105  pix_acc=0.826  mIoU=0.171
+2011_000108  pix_acc=0.101  mIoU=0.021
+2011_000112  pix_acc=0.962  mIoU=0.358
+2011_000116  pix_acc=0.996  mIoU=0.498
+
+Overall pixel accuracy: 0.8448
+Mean IoU (present classes): 0.1979
+
+Per-class IoU:
+    0 background      0.8534
+    1 aeroplane       0.0000
+    2 bicycle         n/a (absent)
+    3 bird            0.4837
+    4 boat            n/a (absent)
+    5 bottle          n/a (absent)
+    6 bus             0.0000
+    7 car             0.0000
+    8 cat             0.0000
+    9 chair           0.0000
+   10 cow             0.0000
+   11 diningtable     n/a (absent)
+   12 dog             n/a (absent)
+   13 horse           0.0000
+   14 motorbike       0.0000
+   15 person          0.6875
+   16 pottedplant     n/a (absent)
+   17 sheep           n/a (absent)
+   18 sofa            0.5476
+   19 train           0.0000
+   20 tvmonitor       n/a (absent)
+
+Caveats:
+  * 20 training images -> strong overfitting risk.
+  * Test set contains classes (8 cat, 10 cow, 19 train) never seen in training.
+  * Goal is methodology comparison (Task 1 vs Task 2), not SOTA.
