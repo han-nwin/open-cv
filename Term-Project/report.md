@@ -173,17 +173,32 @@ Each classifier was tested on all 200 test images (50 per category). The table b
 
 Raw pixel comparison produced highly skewed predictions: 90% of desert images were classified correctly, but only 8% of bedrooms and 14% of rainforests were. Looking at the confusion matrix, the classifier predicted "desert" for 37 of 50 bedrooms, 28 of 50 landscapes, and 26 of 50 rainforests. Pixel by pixel Euclidean distance favors images with uniform, mid-range brightness (desert scenes), causing nearly everything to be pulled toward that class. This method is also extremely sensitive to spatial shifts: if a bed appears in a slightly different position between two bedroom photos, their pixel vectors can look entirely different.
 
+A major contributing factor is the 50x50 resolution. Downsampling from the original ~350x250 to just 2,500 pixels discards nearly all fine detail such as textures, edges, and object boundaries. What remains is essentially a blurry, low resolution thumbnail dominated by average color and coarse brightness patterns. At this resolution, images of very different scenes can end up looking numerically similar (especially if they share an average brightness), which is exactly why most test images were pulled toward the dominant desert class. Using a higher resolution would preserve more information, but raw pixel comparison would still be a weak approach overall.
+
 ### 4.2 Why histograms did moderately better (52.5%)
 
 Converting to intensity histograms removes spatial information and focuses on brightness distribution. This improved predictions across all categories, especially rainforest (68%) which has a distinctive dark, low-intensity profile. However, histograms confused bedroom with landscape frequently (15 of 50 bedrooms misclassified as landscapes, 10 of 50 landscapes as bedrooms) because these categories can share similar mid-range brightness distributions. Deserts still dominated some predictions but less aggressively than with raw pixels.
+
+The fundamental limitation of histograms is that they discard both spatial layout and color. A bright kitchen and a bright beach look identical to a grayscale intensity histogram. Extensions such as spatial pyramid histograms (computing histograms over image sub-regions) or color histograms would preserve more information. Since our preprocessing required grayscale input, only intensity histograms were used.
 
 ### 4.3 Why SIFT BoVW performed well (63.0%)
 
 SIFT captures local structural patterns (edges, corners, textures) which are more informative than raw pixels or brightness alone. Rainforest achieved 84% accuracy, likely because dense foliage produces distinctive texture patterns that map to specific visual words. The error distribution was more balanced across categories compared to Method A. One weakness: deserts were only 50% correct, partly because smooth sand surfaces generate fewer distinctive SIFT keypoints, so the BoVW representation is less discriminative for them.
 
+The vocabulary size (k = 50) also affects the result. Too few visual words means every image's histogram looks similar and the classifier cannot distinguish categories. Too many produces very sparse histograms that overfit to training specifics. Our choice of 50 is a reasonable middle ground, but tuning k (or using spatial pyramid matching to preserve some location information) could improve accuracy further.
+
 ### 4.4 Why the CNN was best overall (63.5%)
 
-The CNN achieved the highest overall accuracy and outperformed SIFT on desert classification (68% versus 50%) because it can learn features suited to smooth textures that SIFT struggles with. It tied SIFT on rainforest accuracy (84%). However, it reached 100% training accuracy by epoch 20 while only achieving 63.5% on the test set, indicating significant overfitting. With only 150 training images per class, the network memorized specific training examples rather than learning fully generalizable features. Data augmentation (random flips, rotations, crops) or a pre-trained backbone would likely close this gap, but these were outside the scope of the project.
+The CNN achieved the highest overall accuracy and outperformed SIFT on desert classification (68% versus 50%) because it can learn features suited to smooth textures that SIFT struggles with. It tied SIFT on rainforest accuracy (84%). However, it reached 100% training accuracy by epoch 20 while only achieving 63.5% on the test set, indicating significant overfitting. With only 150 training images per class, the network memorized specific training examples rather than learning fully generalizable features.
+
+Several factors limited the CNN's accuracy:
+
+- **No regularization.** The architecture has no dropout layers and the optimizer has no weight decay, so there is nothing discouraging the network from memorizing training examples.
+- **No data augmentation.** Random flips, rotations, or crops would effectively expand the training set and force the network to learn features invariant to small changes.
+- **Grayscale input.** The required grayscale preprocessing discards color information that would naturally help a CNN separate green rainforest from yellow desert, for example.
+- **Simple architecture.** The three convolutional layers are enough to learn basic features but lack the depth of modern architectures. A pre-trained backbone (such as ResNet) fine-tuned on this dataset would almost certainly outperform our from-scratch network.
+
+All of these improvements were outside the spec, which required grayscale preprocessing and left the architecture open-ended but did not mandate regularization or augmentation.
 
 ### 4.5 Which categories were hardest
 
@@ -191,6 +206,7 @@ Bedroom was consistently the hardest category across all methods (8% to 58% accu
 
 ### 4.6 Key factors affecting accuracy
 
+- **Input resolution.** The 50x50 input for Method A discards most visual detail, which severely limits how much information the classifier has to work with. Methods B, C, and D all use the 200x200 version of the image (16 times more pixels), giving them access to much richer information.
 - **Training set size.** 150 images per category is small, especially for CNN training, and contributes to overfitting.
 - **Feature representation matters more than classifier complexity.** SIFT BoVW with a simple 1-NN classifier (63.0%) nearly matched the CNN (63.5%). Engineering good features can compensate for a simple classifier.
 - **Different features favor different categories.** Raw pixels favor bright uniform scenes; histograms favor scenes with extreme brightness; SIFT favors textured scenes; the CNN balances better across categories but overfits.
