@@ -140,36 +140,54 @@ def kmeans_numpy(
 
 
 def kmeans_segment_rgb(img_rgb: np.ndarray, K: int, seed: int) -> np.ndarray:
-    """Return segmented image, coloring each pixel with its cluster's mean RGB."""
+    """Cluster pixels in RGB and return an (H, W) uint8 label map.
+
+    Cluster ids are reassigned in order of mean brightness (darkest -> 0, brightest -> K-1)
+    so the id->color mapping is consistent across seeds and images.
+    """
     H, W, _ = img_rgb.shape
     X = img_rgb.reshape(-1, 3).astype(np.float32) / 255.0
     labels, centers = kmeans_numpy(X, K, seed)
-    seg = centers[labels].reshape(H, W, 3)
-    return (seg * 255.0).clip(0, 255).astype(np.uint8)
+    order = np.argsort(centers.sum(axis=1))
+    remap = np.empty(K, dtype=np.int64)
+    for new_id, old_id in enumerate(order):
+        remap[old_id] = new_id
+    labels = remap[labels].reshape(H, W).astype(np.uint8)
+    return labels
 
 
-def run_task1(K: int = 4, seeds: tuple[int, int] = (0, 42)) -> None:
+def run_task1(K: int = 4, seeds: tuple[int, int] = (7, 123)) -> None:
     print(f"[task1] K-means segmentation  K={K}  seeds={seeds}")
     jpgs = sorted(TRAIN_DIR.glob("*.jpg")) + sorted(TEST_DIR.glob("*.jpg"))
     OUT_KMEANS.mkdir(parents=True, exist_ok=True)
+    palette_flat = voc_palette_flat()
     for i, jpg in enumerate(jpgs, 1):
         stem = jpg.stem
         img = np.array(Image.open(jpg).convert("RGB"))
-        seg1 = kmeans_segment_rgb(img, K, seeds[0])
-        seg2 = kmeans_segment_rgb(img, K, seeds[1])
+        seg1_lbl = kmeans_segment_rgb(img, K, seeds[0])
+        seg2_lbl = kmeans_segment_rgb(img, K, seeds[1])
+        seg1_rgb = colorize_mask(seg1_lbl)
+        seg2_rgb = colorize_mask(seg2_lbl)
+
         out = OUT_KMEANS / stem
         out.mkdir(exist_ok=True)
         Image.fromarray(img).save(out / "original.png")
-        Image.fromarray(seg1).save(out / "seed1_segmented.png")
-        Image.fromarray(seg2).save(out / "seed2_segmented.png")
+        for lbl, name in (
+            (seg1_lbl, "seed1_segmented.png"),
+            (seg2_lbl, "seed2_segmented.png"),
+        ):
+            p = Image.fromarray(lbl, mode="P")
+            p.putpalette(palette_flat)
+            p.save(out / name)
+
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
         axes[0].imshow(img)
         axes[0].set_title("original")
         axes[0].axis("off")
-        axes[1].imshow(seg1)
+        axes[1].imshow(seg1_rgb)
         axes[1].set_title(f"K-means seed={seeds[0]}")
         axes[1].axis("off")
-        axes[2].imshow(seg2)
+        axes[2].imshow(seg2_rgb)
         axes[2].set_title(f"K-means seed={seeds[1]}")
         axes[2].axis("off")
         fig.tight_layout()
@@ -434,5 +452,5 @@ def run_task2(
 # ---------- Main ----------
 if __name__ == "__main__":
     verify_voc_dataset([TRAIN_DIR, TEST_DIR])
-    run_task1(K=4, seeds=(0, 42))
+    run_task1(K=4, seeds=(7, 123))
     run_task2(epochs=50)
